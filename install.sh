@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Installs isw (MSI EC fan control) with the profile already tuned for this
-# laptop: MSI GT62VR 7RE / board MS-16L2 -> EC profile "16L2EMS1".
+# laptop: MSI GT62VR 7RE / board MS-16L2 -> EC profile "16L2EMS1_LLM"
+# (smooth curve for long GPU loads) plus the automatic Cooler Boost daemon.
 #
 # Usage:
-#   ./install.sh              # install + enable + apply profile 16L2EMS1
+#   ./install.sh              # install + enable + apply profile 16L2EMS1_LLM
+#   ./install.sh 16L2EMS1     # stock MSI curve for this laptop
 #   ./install.sh 16J9EMS1     # install but use a different profile
 #
 # Must be run with sudo/root.
 
 set -euo pipefail
 
-PROFILE="${1:-16L2EMS1}"
+PROFILE="${1:-16L2EMS1_LLM}"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ $EUID -ne 0 ]]; then
@@ -46,6 +48,21 @@ systemctl enable "isw@${PROFILE}.service"
 
 echo "==> Applying profile ${PROFILE} to the EC now"
 /usr/bin/isw -w "$PROFILE"
+
+# The Cooler Boost daemon refuses to run on any other model.
+if [[ "$(cat /sys/class/dmi/id/product_name)" == "GT62VR 7RE" ]]; then
+	echo "==> Installing automatic Cooler Boost (CPU 90/80 °C, GPU 82/72 °C)"
+	install -d -m 755 /usr/local/lib/isw-auto
+	install -m 644 "$SRC_DIR/bin/isw" "$SRC_DIR/auto-boost/isw_auto.py" /usr/local/lib/isw-auto/
+	install -m 644 "$SRC_DIR/systemd/isw-auto-boost.service" /etc/systemd/system/isw-auto-boost.service
+	systemctl daemon-reload
+	systemctl enable isw-auto-boost.service
+	systemctl restart isw-auto-boost.service
+	# The daemon only switches off a boost it turned on itself.
+	/usr/bin/isw -b off
+else
+	echo "==> Skipping automatic Cooler Boost: it is restricted to GT62VR 7RE"
+fi
 
 echo
 echo "Done. Active profile: ${PROFILE}"

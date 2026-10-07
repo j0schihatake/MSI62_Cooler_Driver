@@ -496,4 +496,8 @@ def main():
 	parser.parse_args()
 
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == '--auto-boost':
+        from isw_auto import main as auto_main
+        auto_main(sys.argv[2:])
+    else:
+        main()
